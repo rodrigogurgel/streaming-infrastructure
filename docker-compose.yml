@@ -1,0 +1,60 @@
+version: "3.8"
+
+services:
+  localstack:
+    container_name: "localstack"
+    image: localstack/localstack
+    ports:
+      - "53:53"
+      - "53:53/udp"
+      - "443:443"
+      - "4566:4566"            # LocalStack Gateway
+      - "4510-4559:4510-4559"  # external services port range
+    environment:
+      - SERVICES=s3,sqs,sns,sts,ses
+      - DEBUG=${DEBUG-}
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - AWS_DEFAULT_REGION=us-east-1
+      - AWS_DEFAULT_OUTPUT=json
+      - AWS_SECRET_ACCESS_KEY="noop"
+      - AWS_ACCESS_KEY_ID="noop"
+      - PERSISTENCE=/tmp/localstack/data
+      # Variables to use into init.sh
+      - STREAMING_CREATED_NOTIFICATION_TOPIC_NAME=STREAMING_CREATED_NOTIFICATION
+      - STREAMING_CREATED_QUEUE_NAME=STREAMING_CREATED_QUEUE
+      - STREAMING_CREATED_DLQ_QUEUE_NAME=STREAMING_CREATED_DLQ_QUEUE
+      - VIDEOS_BUCKET=videos-bucket
+      - EPISODE_UPLOADED_NOTIFICATION_TOPIC_NAME=EPISODE_UPLOADED_NOTIFICATION
+      - EPISODE_UPLOADED_QUEUE_NAME=EPISODE_UPLOADED_QUEUE
+    volumes:
+      - "${LOCALSTACK_VOLUME_DIR:-./localstack/volume}:/var/lib/localstack"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - "./localstack/init-aws.sh:/etc/localstack/init/ready.d/init-aws.sh"
+      - "./localstack/localstack-aws-utils.sh:/etc/localstack/init/utils/localstack-aws-utils.sh"
+      - "./localstack/data:/tmp/localstack/data"
+
+  postgres:
+    container_name: "streaming-service-db"
+    image: postgres
+    volumes:
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./db/tables.sql:/docker-entrypoint-initdb.d/tables.sql
+    environment:
+      POSTGRES_PASSWORD: streaming-service
+      POSTGRES_USER: streaming-service
+      POSTGRES_DB: streaming-service
+    ports:
+      - "5432:5432"
+
+  nginx:
+    container_name: "nginx-vod"
+    image: nginx-vod
+    volumes:
+      - ./nginx/nginx-localstack.conf:/etc/nginx/nginx.conf
+    environment:
+      - AWS_KEY_ID=noop
+      - AWS_SECRET_KEY=noop
+      - BUCKET_NAME=videos-bucket
+      - REGION=us-east-1
+    ports:
+      - "80:80"
